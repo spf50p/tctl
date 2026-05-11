@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+# https://github.com/P3TERX/GeoLite.mmdb
+
+MMDB_DIR=${MMDB_DIR:-"mmdb"}
+ASN_URL="https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-ASN.mmdb"
+CITY_URL="https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-City.mmdb"
+COUNTRY_URL="https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-Country.mmdb"
+
+ASN_FILE="GeoLite2-ASN.mmdb"
+CITY_FILE="GeoLite2-City.mmdb"
+COUNTRY_FILE="GeoLite2-Country.mmdb"
+
+mkdir -p "$MMDB_DIR"
+echo "Downloading MaxMind databases to $MMDB_DIR..."
+echo "Downloading $ASN_FILE"
+curl -sLo "$MMDB_DIR/$ASN_FILE" "$ASN_URL"
+echo "Downloading $CITY_FILE"
+curl -sLo "$MMDB_DIR/$CITY_FILE" "$CITY_URL"
+echo "Downloading $COUNTRY_FILE"
+curl -sLo "$MMDB_DIR/$COUNTRY_FILE" "$COUNTRY_URL"
+echo "Done"

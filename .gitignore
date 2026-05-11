@@ -1,0 +1,5 @@
+.bin
+*.mmdb
+.tctl.yaml
+collected_ips.yaml
+aggregated_geo.json
