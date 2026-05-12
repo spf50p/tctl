@@ -21,7 +21,7 @@ Aliases can be chained: `tctl c a`.
 - `collect.go` — `collect` command + adds `aggregate` as its subcommand. Owns shared types `server`, `config`, `ipList`.
 - `aggregate.go` — `aggregate` command, mmdb lookup + grouping.
 - `.tctl.yaml` — config (default; override with `-c/--conf`). Contains `telemt_servers` with `base_url` and bearer `token`.
-- `collected_ips.yaml` — accumulated unique IPs (output of `collect`, input of `aggregate`). Persistent across runs. Carries `created_at` (preserved across `collect` runs; set on the first write) and `last_update` (rewritten every `collect`).
+- `collected_ips.yaml` — accumulated unique IPs (output of `collect`, input of `aggregate`). Persistent across runs. Carries `count` (size of `unique_ips_list`, rewritten every `collect`), `created_at` (preserved across `collect` runs; set on the first write) and `last_update` (rewritten every `collect`).
 - `aggregated_geo.json` — final aggregate.
 - `mmdb/GeoLite2-{ASN,City,Country}.mmdb` — MaxMind databases. Large binary files; never `Read` them with the file tool.
 - `update-mmdb` — bash script that curls the three latest `.mmdb` files from `P3TERX/GeoLite.mmdb`. It writes to the working directory, so run it from `mmdb/`: `cd mmdb && ../update-mmdb`.

@@ -103,6 +103,6 @@ Sample entry in `aggregated_geo.json`:
 | File | Purpose |
 | --- | --- |
 | `.tctl.yaml` | telemt server list (config) |
-| `collected_ips.yaml` | accumulated unique IPs (input for `aggregate`); carries `created_at` and `last_update` metadata |
+| `collected_ips.yaml` | accumulated unique IPs (input for `aggregate`); carries `count`, `created_at` and `last_update` metadata |
 | `aggregated_geo.json` | aggregated country/city summary |
 | `mmdb/GeoLite2-*.mmdb` | MaxMind databases |

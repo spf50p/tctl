@@ -36,6 +36,7 @@ type userData struct {
 
 type ipList struct {
 	UniqueIPsList []string `yaml:"unique_ips_list"`
+	Count         int      `yaml:"count"`
 	CreatedAt     string   `yaml:"created_at,omitempty"`
 	LastUpdate    string   `yaml:"last_update"`
 }
@@ -113,6 +114,7 @@ func runCollect(configPath, outputPath string) error {
 
 	out := ipList{
 		UniqueIPsList: sorted,
+		Count:         len(sorted),
 		CreatedAt:     createdAt,
 		LastUpdate:    now,
 	}

@@ -83,6 +83,9 @@ func TestRunCollect_FreshFile(t *testing.T) {
 	if !equalSlices(got.UniqueIPsList, wantIPs) {
 		t.Errorf("UniqueIPsList = %v, want %v", got.UniqueIPsList, wantIPs)
 	}
+	if got.Count != len(wantIPs) {
+		t.Errorf("Count = %d, want %d", got.Count, len(wantIPs))
+	}
 	if got.CreatedAt == "" {
 		t.Error("CreatedAt should be set on fresh file")
 	}
@@ -125,6 +128,9 @@ func TestRunCollect_PreservesCreatedAtAndMerges(t *testing.T) {
 	if !equalSlices(got.UniqueIPsList, want) {
 		t.Errorf("UniqueIPsList = %v, want %v", got.UniqueIPsList, want)
 	}
+	if got.Count != len(want) {
+		t.Errorf("Count = %d, want %d", got.Count, len(want))
+	}
 }
 
 func TestRunCollect_NonOKResponse(t *testing.T) {
@@ -145,6 +151,9 @@ func TestRunCollect_NonOKResponse(t *testing.T) {
 	yaml.Unmarshal(b, &got)
 	if len(got.UniqueIPsList) != 0 {
 		t.Errorf("UniqueIPsList = %v, want empty", got.UniqueIPsList)
+	}
+	if got.Count != 0 {
+		t.Errorf("Count = %d, want 0", got.Count)
 	}
 	if got.CreatedAt == "" {
 		t.Error("CreatedAt should still be set even with empty list")
