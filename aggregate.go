@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/oschwald/maxminddb-golang"
@@ -37,40 +36,37 @@ type aggregateEntry struct {
 }
 
 func aggregateCmd() *cobra.Command {
-	var (
-		inputPath  string
-		outputPath string
-		dbPath     string
-		maxAge     string
-	)
 	cmd := &cobra.Command{
 		Use:     "aggregate",
 		Aliases: []string{"a"},
-		Short:   "group IPs from collected_ips.yaml by country/city into aggregated_geo.json",
+		Short:   "group IPs from collect_file_path by country/city into aggregate_file_path",
 		Args:    cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runAggregate(inputPath, outputPath, dbPath, maxAge)
+			return runAggregate(configPath)
 		},
 	}
-	cmd.Flags().StringVarP(&inputPath, "input", "i", "collected_ips.yaml", "input path")
-	cmd.Flags().StringVarP(&outputPath, "output", "o", "aggregated_geo.json", "output path")
-	cmd.Flags().StringVar(&dbPath, "db", "mmdb/GeoLite2-City.mmdb", "mmdb path")
-	cmd.Flags().StringVar(&maxAge, "max-age", "", "delete input file when its created_at is older than this (e.g. 45s/4m/24h/2d)")
 	return cmd
 }
 
-func parseAge(s string) (time.Duration, error) {
-	if num, ok := strings.CutSuffix(s, "d"); ok {
-		days, err := strconv.Atoi(num)
-		if err != nil || days < 0 {
-			return 0, fmt.Errorf("invalid duration %q", s)
-		}
-		return time.Duration(days) * 24 * time.Hour, nil
+func runAggregate(configPath string) error {
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
 	}
-	return time.ParseDuration(s)
-}
+	if cfg.CollectFilePath == "" {
+		return fmt.Errorf("collect_file_path is empty in %s", configPath)
+	}
+	if cfg.AggregateFilePath == "" {
+		return fmt.Errorf("aggregate_file_path is empty in %s", configPath)
+	}
+	if cfg.MMDBCity == "" {
+		return fmt.Errorf("mmdb_city is empty in %s", configPath)
+	}
 
-func runAggregate(inputPath, outputPath, dbPath, maxAge string) error {
+	nowT := time.Now().UTC()
+	inputPath := expandTimePath(cfg.CollectFilePath, nowT)
+	outputPath := expandTimePath(cfg.AggregateFilePath, nowT)
+
 	b, err := os.ReadFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", inputPath, err)
@@ -80,9 +76,9 @@ func runAggregate(inputPath, outputPath, dbPath, maxAge string) error {
 		return fmt.Errorf("parse %s: %w", inputPath, err)
 	}
 
-	db, err := maxminddb.Open(dbPath)
+	db, err := maxminddb.Open(cfg.MMDBCity)
 	if err != nil {
-		return fmt.Errorf("open mmdb %s: %w", dbPath, err)
+		return fmt.Errorf("open mmdb %s: %w", cfg.MMDBCity, err)
 	}
 	defer db.Close()
 
@@ -134,36 +130,12 @@ func runAggregate(inputPath, outputPath, dbPath, maxAge string) error {
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(outputPath), err)
+	}
 	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 	fmt.Printf("wrote %d entries to %s\n", len(out), outputPath)
-
-	return maybeRemoveExpired(inputPath, in.CreatedAt, maxAge)
-}
-
-func maybeRemoveExpired(inputPath, createdAt, maxAge string) error {
-	if maxAge == "" {
-		return nil
-	}
-	age, err := parseAge(maxAge)
-	if err != nil {
-		return fmt.Errorf("parse --max-age: %w", err)
-	}
-	if createdAt == "" {
-		fmt.Fprintf(os.Stderr, "max-age check skipped: %s has no created_at\n", inputPath)
-		return nil
-	}
-	created, err := time.Parse("2006-01-02 15:04:05 UTC", createdAt)
-	if err != nil {
-		return fmt.Errorf("parse created_at %q: %w", createdAt, err)
-	}
-	if time.Since(created) < age {
-		return nil
-	}
-	if err := os.Remove(inputPath); err != nil {
-		return fmt.Errorf("remove %s: %w", inputPath, err)
-	}
-	fmt.Printf("removed %s (age >= %s)\n", inputPath, maxAge)
 	return nil
 }

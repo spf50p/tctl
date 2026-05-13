@@ -31,12 +31,39 @@ tctl c a
 Reads `.tctl.yaml` by default (override with `-c/--conf`):
 
 ```yaml
+collect_file_path: /var/lib/tctl/%Y/%m/%d/%H.yaml
+aggregate_file_path: /var/lib/tctl/%Y/%m/%d/%H.json
+mmdb_city: /var/lib/tctl/mmdb/GeoLite2-City.mmdb
+mmdb_asn: /var/lib/tctl/mmdb/GeoLite2-ASN.mmdb
+mmdb_country: /var/lib/tctl/mmdb/GeoLite2-Country.mmdb
 telemt_servers:
   - base_url: https://s1.example.com:9091
     token: <bearer-token>
   - base_url: https://s2.example.com:9091
     token: <bearer-token>
 ```
+
+| Field                  | Used by              | Notes |
+| ---------------------- | -------------------- | ----- |
+| `collect_file_path`    | `collect`, `aggregate` | output of `collect`, input of `aggregate` |
+| `aggregate_file_path`  | `aggregate`            | output of `aggregate` |
+| `mmdb_city`            | `aggregate`            | required for city/country lookups |
+| `mmdb_asn`, `mmdb_country` | reserved          | declared for future commands |
+| `telemt_servers`       | `collect`              | list of `{base_url, token}` |
+
+`collect_file_path` and `aggregate_file_path` support date placeholders expanded against the current UTC time on each run:
+
+| Placeholder | Meaning              |
+| ----------- | -------------------- |
+| `%Y`        | 4-digit year         |
+| `%m`        | 2-digit month        |
+| `%d`        | 2-digit day          |
+| `%H`        | 2-digit hour (24h)   |
+| `%M`        | 2-digit minute       |
+| `%S`        | 2-digit second       |
+| `%%`        | literal `%`          |
+
+Missing parent directories are created automatically. With the example above and `%H.yaml`, you get a separate accumulator file per hour.
 
 ### telemt-side config
 
@@ -56,27 +83,26 @@ The window must cover your `collect` cadence with some margin: at one run per mi
 
 ### `tctl collect` (alias `c`)
 
-Hits `GET /v1/users` with `Authorization: Bearer <token>` on each server in `telemt_servers`, merges all `recent_unique_ips_list` values with the IPs already stored in `collected_ips.yaml` (deduplicated), and rewrites the file with an updated timestamp.
+Hits `GET /v1/users` with `Authorization: Bearer <token>` on each server in `telemt_servers`, merges all `recent_unique_ips_list` values with the IPs already stored at the resolved `collect_file_path` (deduplicated), and rewrites the file with an updated timestamp.
 
 ```sh
-tctl collect            # writes collected_ips.yaml
-tctl collect -o ips.yaml
+tctl collect
 ```
+
+The output path comes from `collect_file_path` in the config (no `-o` flag); see [Configuration](#configuration) for placeholder semantics.
 
 ### `tctl collect aggregate` (alias `a`)
 
-Reads `collected_ips.yaml`, looks up each IP in `mmdb/GeoLite2-City.mmdb`, groups by `(country, city)`, and writes `aggregated_geo.json` sorted by `count` descending.
+Reads the file at `collect_file_path` (with current-UTC placeholders expanded), looks up each IP in `mmdb_city`, groups by `(country, city)`, and writes the result to `aggregate_file_path` sorted by `count` descending. Parent directories are created automatically.
 
 ```sh
 tctl collect aggregate
 tctl c a                # chained aliases
-tctl c a -i ips.yaml -o geo.json --db mmdb/GeoLite2-City.mmdb
-tctl c a --max-age 24h  # delete -i file after aggregating if older than 24h
 ```
 
-`--max-age` accepts `45s`/`4m`/`24h`/`2d` (or any `time.ParseDuration` form). The age is measured against the `created_at` field inside the input file; if the file is older than the given duration, it gets removed after a successful aggregation. The next `collect` run starts a fresh accumulator. If the input has no `created_at` (e.g. file produced before this field existed), the check is skipped with a warning.
+All paths come from the config; there are no input/output/db flags. If `collect` and `aggregate` run in the same hour (with the example `%H` granularity), they line up on the same time-stamped pair.
 
-Sample entry in `aggregated_geo.json`:
+Sample entry in the aggregate JSON:
 
 ```json
 {
@@ -92,7 +118,7 @@ Sample entry in `aggregated_geo.json`:
 
 ## MaxMind databases
 
-`tctl-update-mmdb` downloads the latest `GeoLite2-{ASN,City,Country}.mmdb` from the [P3TERX/GeoLite.mmdb](https://github.com/P3TERX/GeoLite.mmdb) releases. Files should live under `mmdb/` (the default path `aggregate` looks at):
+`tctl-update-mmdb` downloads the latest `GeoLite2-{ASN,City,Country}.mmdb` from the [P3TERX/GeoLite.mmdb](https://github.com/P3TERX/GeoLite.mmdb) releases. Place them where `mmdb_city` / `mmdb_asn` / `mmdb_country` point.
 
 ```sh
 ./tctl-update-mmdb
@@ -102,7 +128,7 @@ Sample entry in `aggregated_geo.json`:
 
 | File | Purpose |
 | --- | --- |
-| `.tctl.yaml` | telemt server list (config) |
-| `collected_ips.yaml` | accumulated unique IPs (input for `aggregate`); carries `count`, `created_at` and `last_update` metadata |
-| `aggregated_geo.json` | aggregated country/city summary |
-| `mmdb/GeoLite2-*.mmdb` | MaxMind databases |
+| `.tctl.yaml` | config (paths + telemt servers) |
+| `collect_file_path` target | accumulated unique IPs (output of `collect`, input of `aggregate`); carries `count`, `created_at` and `last_update` metadata |
+| `aggregate_file_path` target | aggregated country/city summary |
+| `mmdb_*` targets | MaxMind databases |

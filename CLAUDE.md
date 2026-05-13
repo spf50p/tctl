@@ -10,8 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Two commands, with `aggregate` nested under `collect`:
 
-- `tctl collect` (alias `c`) — fetches `/v1/users` from each `telemt_servers` entry in `.tctl.yaml`, merges `recent_unique_ips_list` values with what's already in `collected_ips.yaml` (deduplicated), rewrites the file.
-- `tctl collect aggregate` (alias `a`) — reads `collected_ips.yaml`, looks up each IP in `mmdb/GeoLite2-City.mmdb` via `maxminddb-golang` (no shelling out), groups by `(country, city)`, writes `aggregated_geo.json` sorted by `count` descending. `--max-age 45s|4m|24h|2d` deletes the input after a successful aggregation when its `created_at` is older than the given duration (so the next `collect` run starts a fresh accumulator).
+- `tctl collect` (alias `c`) — fetches `/v1/users` from each `telemt_servers` entry in `.tctl.yaml`, merges `recent_unique_ips_list` values with what's already at the resolved `collect_file_path` (deduplicated), rewrites the file. Output path comes from `config.collect_file_path` (no `-o` flag); supports `strftime`-style `%Y/%m/%d/%H/%M/%S/%%` placeholders against current UTC, parent dirs are created automatically.
+- `tctl collect aggregate` (alias `a`) — reads the expanded `collect_file_path`, looks up each IP in `mmdb_city` via `maxminddb-golang` (no shelling out), groups by `(country, city)`, writes the expanded `aggregate_file_path` sorted by `count` descending. All paths come from config (no `-i/-o/--db` flags); parent dirs are created automatically.
 
 Aliases can be chained: `tctl c a`.
 
@@ -20,7 +20,7 @@ Aliases can be chained: `tctl c a`.
 - `main.go` — root cobra command, registers `collect`.
 - `collect.go` — `collect` command + adds `aggregate` as its subcommand. Owns shared types `server`, `config`, `ipList`.
 - `aggregate.go` — `aggregate` command, mmdb lookup + grouping.
-- `.tctl.yaml` — config (default; override with `-c/--conf`). Contains `telemt_servers` with `base_url` and bearer `token`.
+- `.tctl.yaml` — config (default; override with `-c/--conf`). Fields: `collect_file_path`, `aggregate_file_path` (both support `strftime` placeholders), `mmdb_city` (required for `aggregate`), `mmdb_asn`, `mmdb_country` (declared but not yet consumed), `telemt_servers` (list of `{base_url, token}`).
 - `collected_ips.yaml` — accumulated unique IPs (output of `collect`, input of `aggregate`). Persistent across runs. Carries `count` (size of `unique_ips_list`, rewritten every `collect`), `created_at` (preserved across `collect` runs; set on the first write) and `last_update` (rewritten every `collect`).
 - `aggregated_geo.json` — final aggregate.
 - `mmdb/GeoLite2-{ASN,City,Country}.mmdb` — MaxMind databases. Large binary files; never `Read` them with the file tool.

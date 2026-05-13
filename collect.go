@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -22,7 +23,12 @@ type server struct {
 }
 
 type config struct {
-	TelemtServers []server `yaml:"telemt_servers"`
+	CollectFilePath   string   `yaml:"collect_file_path"`
+	AggregateFilePath string   `yaml:"aggregate_file_path"`
+	MMDBCity          string   `yaml:"mmdb_city"`
+	MMDBASN           string   `yaml:"mmdb_asn"`
+	MMDBCountry       string   `yaml:"mmdb_country"`
+	TelemtServers     []server `yaml:"telemt_servers"`
 }
 
 type usersResponse struct {
@@ -42,28 +48,35 @@ type ipList struct {
 }
 
 func collectCmd() *cobra.Command {
-	var outputPath string
 	cmd := &cobra.Command{
 		Use:     "collect",
 		Aliases: []string{"c"},
-		Short:   "fetch recent_unique_ips_list from API endpoints into collected_ips.yaml",
+		Short:   "fetch recent_unique_ips_list from API endpoints into config.collect_file_path",
 		Args:    cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runCollect(configPath, outputPath)
+			return runCollect(configPath)
 		},
 	}
-	cmd.Flags().StringVarP(&outputPath, "output", "o", "collected_ips.yaml", "output path")
 	cmd.AddCommand(aggregateCmd())
 	return cmd
 }
 
-func runCollect(configPath, outputPath string) error {
+func runCollect(configPath string) error {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	if cfg.CollectFilePath == "" {
+		return fmt.Errorf("collect_file_path is empty in %s", configPath)
+	}
 	if len(cfg.TelemtServers) == 0 {
 		return fmt.Errorf("no telemt_servers in %s", configPath)
+	}
+
+	nowT := time.Now().UTC()
+	outputPath := expandTimePath(cfg.CollectFilePath, nowT)
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(outputPath), err)
 	}
 
 	ips := make(map[string]struct{})
@@ -79,7 +92,7 @@ func runCollect(configPath, outputPath string) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("read %s: %w", outputPath, err)
 	}
-	now := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+	now := nowT.Format("2006-01-02 15:04:05 UTC")
 	if createdAt == "" {
 		createdAt = now
 	}
@@ -162,6 +175,18 @@ func fetchUsers(client *http.Client, baseURL, token string) (*usersResponse, err
 		return nil, err
 	}
 	return &ur, nil
+}
+
+func expandTimePath(p string, t time.Time) string {
+	return strings.NewReplacer(
+		"%Y", t.Format("2006"),
+		"%m", t.Format("01"),
+		"%d", t.Format("02"),
+		"%H", t.Format("15"),
+		"%M", t.Format("04"),
+		"%S", t.Format("05"),
+		"%%", "%",
+	).Replace(p)
 }
 
 func ipLess(a, b string) bool {
