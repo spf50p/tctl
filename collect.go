@@ -18,8 +18,9 @@ import (
 )
 
 type server struct {
-	BaseURL string `yaml:"base_url"`
-	Token   string `yaml:"token"`
+	BaseURL string   `yaml:"base_url"`
+	Token   string   `yaml:"token"`
+	Tags    []string `yaml:"tags"`
 }
 
 type config struct {

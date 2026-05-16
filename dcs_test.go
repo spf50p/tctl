@@ -73,7 +73,7 @@ func TestRunDcs(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := runDcs(cfgPath, &buf); err != nil {
+	if err := runDcs(cfgPath, nil, &buf); err != nil {
 		t.Fatalf("runDcs: %v", err)
 	}
 
@@ -100,6 +100,83 @@ func TestRunDcs(t *testing.T) {
 	}
 }
 
+func TestFilterServersByTag(t *testing.T) {
+	all := []server{
+		{BaseURL: "a", Tags: []string{"nl", "primary"}},
+		{BaseURL: "b", Tags: []string{"nl2"}},
+		{BaseURL: "c", Tags: []string{"de"}},
+		{BaseURL: "d"},
+	}
+	cases := []struct {
+		name   string
+		filter []string
+		want   []string
+	}{
+		{"empty filter returns all", nil, []string{"a", "b", "c", "d"}},
+		{"single match", []string{"nl"}, []string{"a"}},
+		{"multiple OR-matches", []string{"nl", "nl2"}, []string{"a", "b"}},
+		{"no match", []string{"jp"}, nil},
+		{"server without tags never matches when filter set", []string{"primary", "de"}, []string{"a", "c"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := filterServersByTag(all, tc.filter)
+			var urls []string
+			for _, s := range got {
+				urls = append(urls, s.BaseURL)
+			}
+			if !equalSlices(urls, tc.want) {
+				t.Errorf("filterServersByTag(%v) = %v, want %v", tc.filter, urls, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunDcs_TagFilter(t *testing.T) {
+	const body = `{"ok":true,"data":{"middle_proxy_enabled":true,"reason":null,"generated_at_epoch_secs":1,"dcs":[]}}`
+	srvNL := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintln(w, body)
+	}))
+	defer srvNL.Close()
+	srvDE := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Errorf("srvDE should have been filtered out")
+		fmt.Fprintln(w, body)
+	}))
+	defer srvDE.Close()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cfg.yaml")
+	cfgBody := fmt.Sprintf("collect_file_path: /tmp/x.yaml\ntelemt_servers:\n  - base_url: %s\n    token: t\n    tags: [nl]\n  - base_url: %s\n    token: t\n    tags: [de]\n", srvNL.URL, srvDE.URL)
+	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := runDcs(cfgPath, []string{"nl"}, &buf); err != nil {
+		t.Fatalf("runDcs: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "== "+srvNL.URL+" ==") {
+		t.Errorf("expected NL server in output\n%s", out)
+	}
+	if strings.Contains(out, srvDE.URL) {
+		t.Errorf("DE server should not appear in output\n%s", out)
+	}
+}
+
+func TestRunDcs_TagFilterNoMatch(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "cfg.yaml")
+	cfgBody := "collect_file_path: /tmp/x.yaml\ntelemt_servers:\n  - base_url: http://127.0.0.1:9\n    token: t\n    tags: [nl]\n"
+	if err := os.WriteFile(cfgPath, []byte(cfgBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := runDcs(cfgPath, []string{"jp"}, &buf); err == nil {
+		t.Error("expected error when no servers match the tag filter")
+	}
+}
+
 func TestRunDcs_MultipleServers(t *testing.T) {
 	const body = `{"ok":true,"data":{"middle_proxy_enabled":true,"reason":null,"generated_at_epoch_secs":1,"dcs":[]}}`
 	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -119,7 +196,7 @@ func TestRunDcs_MultipleServers(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := runDcs(cfgPath, &buf); err != nil {
+	if err := runDcs(cfgPath, nil, &buf); err != nil {
 		t.Fatalf("runDcs: %v", err)
 	}
 	out := buf.String()

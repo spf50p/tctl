@@ -44,18 +44,20 @@ type dcStatus struct {
 }
 
 func dcsCmd() *cobra.Command {
+	var tags []string
 	cmd := &cobra.Command{
 		Use:   "dcs",
 		Short: "show DcStatusData per DC for each telemt server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runDcs(configPath, os.Stdout)
+			return runDcs(configPath, tags, os.Stdout)
 		},
 	}
+	cmd.Flags().StringArrayVarP(&tags, "tag", "t", nil, "filter servers by tag (repeatable; matches if any tag intersects)")
 	return cmd
 }
 
-func runDcs(configPath string, out io.Writer) error {
+func runDcs(configPath string, tagFilter []string, out io.Writer) error {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -64,8 +66,13 @@ func runDcs(configPath string, out io.Writer) error {
 		return fmt.Errorf("no telemt_servers in %s", configPath)
 	}
 
+	servers := filterServersByTag(cfg.TelemtServers, tagFilter)
+	if len(servers) == 0 {
+		return fmt.Errorf("no telemt_servers match tags %v", tagFilter)
+	}
+
 	client := &http.Client{Timeout: 30 * time.Second}
-	for i, s := range cfg.TelemtServers {
+	for i, s := range servers {
 		if i > 0 {
 			fmt.Fprintln(out)
 		}
@@ -82,6 +89,26 @@ func runDcs(configPath string, out io.Writer) error {
 		renderDcStatus(out, data)
 	}
 	return nil
+}
+
+func filterServersByTag(servers []server, tagFilter []string) []server {
+	if len(tagFilter) == 0 {
+		return servers
+	}
+	wanted := make(map[string]struct{}, len(tagFilter))
+	for _, t := range tagFilter {
+		wanted[t] = struct{}{}
+	}
+	out := make([]server, 0, len(servers))
+	for _, s := range servers {
+		for _, t := range s.Tags {
+			if _, ok := wanted[t]; ok {
+				out = append(out, s)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func fetchDcStatus(client *http.Client, baseURL, token string) (*dcStatusData, error) {
