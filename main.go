@@ -21,6 +21,7 @@ func main() {
 	}
 	root.PersistentFlags().StringVarP(&configPath, "conf", "c", ".tctl.yaml", "config path")
 	root.AddCommand(collectCmd())
+	root.AddCommand(dcsCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

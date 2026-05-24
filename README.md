@@ -39,9 +39,13 @@ mmdb_country: /var/lib/tctl/mmdb/GeoLite2-Country.mmdb
 telemt_servers:
   - base_url: https://s1.example.com:9091
     token: <bearer-token>
+    tags: [nl, primary]
   - base_url: https://s2.example.com:9091
     token: <bearer-token>
+    tags: [de]
 ```
+
+`tags` is optional. It's used by `tctl dcs -t <tag>` to filter which servers to query.
 
 | Field                  | Used by              | Notes |
 | ---------------------- | -------------------- | ----- |
@@ -115,6 +119,32 @@ Sample entry in the aggregate JSON:
 ```
 
 `country` and `city` may be `null` when the MaxMind record lacks the corresponding field.
+
+### `tctl dcs`
+
+Iterates every `telemt_servers` entry, calls `GET /v1/stats/dcs` (`DcStatusData`), and prints a per-server table with the most operationally useful fields:
+
+```
+== https://s1.example.com:9091 ==
+  middle_proxy_enabled: true
+  generated_at:         2026-05-15 14:30:00 UTC
+  DC  EP   AVAIL%  WRITERS  COV%   FRESH   F-COV%  FLOOR  RTT(ms)  LOAD
+  1   3/3  100.0   12/12    100.0  11/12   91.7    12     45.2     128
+  2   1/2  50.0    6/8      75.0   5/8     62.5    10*    -        42
+
+== https://s2.example.com:9091 ==
+  ...
+```
+
+Columns: `EP` is `available/total` endpoints, `WRITERS` is `alive/required`, `FRESH` is `fresh_alive/required`, `FLOOR` is `floor_target` (`*` suffix when `floor_capped`), `RTT(ms)` shows `-` when null, `LOAD` is bound client sessions. Per-server errors are inlined under that server's header; iteration continues over the remaining servers.
+
+`-t/--tag` filters which servers to hit by their `tags`. Repeatable; matches if any of the server's tags intersects with any of the filter values. Without `-t`, all servers are queried.
+
+```sh
+tctl dcs
+tctl dcs -t nl
+tctl dcs -t nl -t nl2     # union: servers tagged nl OR nl2
+```
 
 ## MaxMind databases
 

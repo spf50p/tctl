@@ -8,10 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Command structure
 
-Two commands, with `aggregate` nested under `collect`:
+Top-level: `collect` and `dcs`. `aggregate` is nested under `collect`.
 
 - `tctl collect` (alias `c`) — fetches `/v1/users` from each `telemt_servers` entry in `.tctl.yaml`, merges `recent_unique_ips_list` values with what's already at the resolved `collect_file_path` (deduplicated), rewrites the file. Output path comes from `config.collect_file_path` (no `-o` flag); supports `strftime`-style `%Y/%m/%d/%H/%M/%S/%%` placeholders against current UTC, parent dirs are created automatically.
 - `tctl collect aggregate` (alias `a`) — reads the expanded `collect_file_path`, looks up each IP in `mmdb_city` via `maxminddb-golang` (no shelling out), groups by `(country, city)`, writes the expanded `aggregate_file_path` sorted by `count` descending. All paths come from config (no `-i/-o/--db` flags); parent dirs are created automatically.
+- `tctl dcs` — hits `GET /v1/stats/dcs` (`DcStatusData`) on every `telemt_servers` entry, renders one `text/tabwriter` table per server with `dc / endpoints / writers / fresh / floor / rtt / load`. `floor_target` carries `*` suffix when `floor_capped` is true; `rtt_ms` shows `-` when null. Per-server errors are inlined under the server header, iteration continues. `-t/--tag` (repeatable) filters servers by their `tags` (union over values; matches if any tag intersects). Empty filter → all servers.
 
 Aliases can be chained: `tctl c a`.
 
