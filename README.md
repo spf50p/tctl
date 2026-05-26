@@ -33,6 +33,7 @@ Reads `.tctl.yaml` by default (override with `-c/--conf`):
 ```yaml
 collect_file_path: /var/lib/tctl/%Y/%m/%d/%H.yaml
 aggregate_file_path: /var/lib/tctl/%Y/%m/%d/%H.json
+days_file_path: /var/lib/tctl/days.json
 mmdb_city: /var/lib/tctl/mmdb/GeoLite2-City.mmdb
 mmdb_asn: /var/lib/tctl/mmdb/GeoLite2-ASN.mmdb
 mmdb_country: /var/lib/tctl/mmdb/GeoLite2-Country.mmdb
@@ -51,11 +52,12 @@ telemt_servers:
 | ---------------------- | -------------------- | ----- |
 | `collect_file_path`    | `collect`, `aggregate` | output of `collect`, input of `aggregate` |
 | `aggregate_file_path`  | `aggregate`            | output of `aggregate` |
+| `days_file_path`       | `collect`              | global index of collected days; defaults to `/var/lib/tctl/days.json` when unset |
 | `mmdb_city`            | `aggregate`            | required for city/country lookups |
 | `mmdb_asn`, `mmdb_country` | reserved          | declared for future commands |
 | `telemt_servers`       | `collect`              | list of `{base_url, token}` |
 
-`collect_file_path` and `aggregate_file_path` support date placeholders expanded against the current UTC time on each run:
+`collect_file_path`, `aggregate_file_path`, and `days_file_path` support date placeholders expanded against the current UTC time on each run:
 
 | Placeholder | Meaning              |
 | ----------- | -------------------- |
@@ -95,9 +97,18 @@ tctl collect
 
 The output path comes from `collect_file_path` in the config (no `-o` flag); see [Configuration](#configuration) for placeholder semantics.
 
+After the YAML is written, `collect` also updates a global day index at `days_file_path` (default `/var/lib/tctl/days.json`): the current UTC date in `YYYY-MM-DD` is added to a JSON array, deduplicated and sorted ascending. Useful as an index of which days have collected data on disk.
+
+```json
+[
+  "2026-05-24",
+  "2026-05-25"
+]
+```
+
 ### `tctl collect aggregate` (alias `a`)
 
-Reads the file at `collect_file_path` (with current-UTC placeholders expanded), looks up each IP in `mmdb_city`, groups by `(country, city)`, and writes the result to `aggregate_file_path` sorted by `count` descending. Parent directories are created automatically.
+Reads the file at `collect_file_path` (with current-UTC placeholders expanded), looks up each IP in `mmdb_city`, groups by `(country, city)`, and writes the result to `aggregate_file_path`. Parent directories are created automatically.
 
 ```sh
 tctl collect aggregate
@@ -106,19 +117,25 @@ tctl c a                # chained aliases
 
 All paths come from the config; there are no input/output/db flags. If `collect` and `aggregate` run in the same hour (with the example `%H` granularity), they line up on the same time-stamped pair.
 
-Sample entry in the aggregate JSON:
+The aggregate JSON is an object with summary counts and a `data` array of per-(country, city) groups sorted by `count` descending:
 
 ```json
 {
-  "country": "Russia",
-  "city": "Moscow",
-  "latitude": 55.7487,
-  "longitude": 37.6187,
-  "count": 35
+  "country_count": 42,
+  "city_count": 137,
+  "data": [
+    {
+      "country": "Russia",
+      "city": "Moscow",
+      "latitude": 55.7487,
+      "longitude": 37.6187,
+      "count": 35
+    }
+  ]
 }
 ```
 
-`country` and `city` may be `null` when the MaxMind record lacks the corresponding field.
+`country_count` is the number of distinct countries in `data`; `city_count` is the number of distinct non-null cities. `country` and `city` may be `null` when the MaxMind record lacks the corresponding field.
 
 ### `tctl dcs`
 
@@ -160,5 +177,6 @@ tctl dcs -t nl -t nl2     # union: servers tagged nl OR nl2
 | --- | --- |
 | `.tctl.yaml` | config (paths + telemt servers) |
 | `collect_file_path` target | accumulated unique IPs (output of `collect`, input of `aggregate`); carries `count`, `created_at` and `last_update` metadata |
-| `aggregate_file_path` target | aggregated country/city summary |
+| `aggregate_file_path` target | aggregated country/city summary (`{country_count, city_count, data:[...]}`) |
+| `days_file_path` target | sorted JSON array of `YYYY-MM-DD` dates on which `collect` has run |
 | `mmdb_*` targets | MaxMind databases |

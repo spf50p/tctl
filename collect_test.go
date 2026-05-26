@@ -42,7 +42,8 @@ func TestIPLess(t *testing.T) {
 func writeConfig(t *testing.T, dir, baseURL, token, collectFilePath string) string {
 	t.Helper()
 	p := filepath.Join(dir, "cfg.yaml")
-	body := fmt.Sprintf("collect_file_path: %s\ntelemt_servers:\n  - base_url: %s\n    token: %s\n", collectFilePath, baseURL, token)
+	daysPath := filepath.Join(dir, "days.json")
+	body := fmt.Sprintf("collect_file_path: %s\ndays_file_path: %s\ntelemt_servers:\n  - base_url: %s\n    token: %s\n", collectFilePath, daysPath, baseURL, token)
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
