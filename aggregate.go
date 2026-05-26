@@ -35,6 +35,12 @@ type aggregateEntry struct {
 	Count     int      `json:"count"`
 }
 
+type aggregateOutput struct {
+	CountryCount int               `json:"country_count"`
+	CityCount    int               `json:"city_count"`
+	Data         []*aggregateEntry `json:"data"`
+}
+
 func aggregateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "aggregate",
@@ -120,12 +126,25 @@ func runAggregate(configPath string) error {
 		entry.Count++
 	}
 
-	out := make([]*aggregateEntry, 0, len(agg))
+	entries := make([]*aggregateEntry, 0, len(agg))
+	countries := make(map[string]struct{})
+	cities := make(map[string]struct{})
 	for _, e := range agg {
-		out = append(out, e)
+		entries = append(entries, e)
+		if e.Country != nil {
+			countries[*e.Country] = struct{}{}
+		}
+		if e.City != nil {
+			cities[*e.City] = struct{}{}
+		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Count > entries[j].Count })
 
+	out := aggregateOutput{
+		CountryCount: len(countries),
+		CityCount:    len(cities),
+		Data:         entries,
+	}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
@@ -136,6 +155,6 @@ func runAggregate(configPath string) error {
 	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
-	fmt.Printf("wrote %d entries to %s\n", len(out), outputPath)
+	fmt.Printf("wrote %d entries to %s\n", len(entries), outputPath)
 	return nil
 }

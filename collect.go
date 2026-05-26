@@ -26,11 +26,14 @@ type server struct {
 type config struct {
 	CollectFilePath   string   `yaml:"collect_file_path"`
 	AggregateFilePath string   `yaml:"aggregate_file_path"`
+	DaysFilePath      string   `yaml:"days_file_path"`
 	MMDBCity          string   `yaml:"mmdb_city"`
 	MMDBASN           string   `yaml:"mmdb_asn"`
 	MMDBCountry       string   `yaml:"mmdb_country"`
 	TelemtServers     []server `yaml:"telemt_servers"`
 }
+
+const defaultDaysFilePath = "/var/lib/tctl/days.json"
 
 type usersResponse struct {
 	OK   bool       `json:"ok"`
@@ -140,6 +143,47 @@ func runCollect(configPath string) error {
 		return fmt.Errorf("write: %w", err)
 	}
 	fmt.Printf("wrote %d unique IPs to %s\n", len(sorted), outputPath)
+
+	daysPath := cfg.DaysFilePath
+	if daysPath == "" {
+		daysPath = defaultDaysFilePath
+	}
+	daysPath = expandTimePath(daysPath, nowT)
+	if err := updateDaysFile(daysPath, nowT.Format("2006-01-02")); err != nil {
+		return fmt.Errorf("update days file: %w", err)
+	}
+	return nil
+}
+
+func updateDaysFile(path, today string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	}
+	var days []string
+	if b, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(b, &days); err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	seen := make(map[string]struct{}, len(days)+1)
+	for _, d := range days {
+		seen[d] = struct{}{}
+	}
+	seen[today] = struct{}{}
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
 	return nil
 }
 
